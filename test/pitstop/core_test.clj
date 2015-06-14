@@ -26,8 +26,10 @@
     (go (<! stopper) (close! c) (swap! calls update-in [:storage :->stopper] conj true))
     (go (<! succ) (swap! calls update-in [:storage :->success] conj true))
     c))
-(defmethod s/store-deferred-msg! :test [obj]
-  (swap! calls update-in [:storage :store-deferred-msg!] conj obj))
+(defmethod s/store-msg! :test [obj]
+  (swap! calls update-in [:storage :store-msg!] conj obj))
+(defmethod s/remove-msg! :test [obj]
+  (swap! calls update-in [:storage :remove-msg!] conj obj))
 
 (deftest test-pipeline-test
   (testing "init-messaging!"
@@ -46,7 +48,14 @@
     (let [storage-inst {:type :test :instance true :storage true}
           when (t/plus (t/now) (t/hours 1))]
       (pitstop/defer-msg! storage-inst {:message true} when)
-      (is (= {:storage {:store-deferred-msg! `({:inst ~storage-inst :msg {:message true} :when ~when})}}
+      (is (= {:storage {:store-msg! `({:inst ~storage-inst :msg {:message true} :when ~when})}}
+             @calls)))
+    (reset! calls nil))
+  (testing "remove-msg!"
+    (let [storage-inst {:type :test :instance true :storage true}
+          when (t/plus (t/now) (t/hours 1))]
+      (pitstop/remove-msg! storage-inst "yoyo")
+      (is (= {:storage {:remove-msg! `({:inst ~storage-inst :id "yoyo"})}}
              @calls)))
     (reset! calls nil))
   (testing "start-pipeline!"

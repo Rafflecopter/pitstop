@@ -13,7 +13,12 @@
   Upon stopper channel closing, listening should cease and channel closed"
   #(get-in % [:inst :type]))
 
-(defmulti store-deferred-msg!
-  "Store a deferred message
+(defmulti store-msg!
+  "Store a new _or_ updated (via {:id id}) deferred message
   Arguments are {:inst instance-obj :msg msg :when joda/DateTime}"
+  #(get-in % [:inst :type]))
+
+(defmulti remove-msg!
+  "Remove a deferred message
+  Arguments are {:inst instance-obj :id id}"
   #(get-in % [:inst :type]))

@@ -10,7 +10,9 @@
 
 
 (defn init-storage!
-  "Initialize a storage config into a storage instance"
+  "Initialize a storage config into a storage instance.
+  Storage configs should include all necessary connection
+  information (see each implementation)."
   ^Map [^Map storage-cfg]
   (assoc (s/init! storage-cfg)
          :type (:type storage-cfg)))
@@ -41,5 +43,9 @@
 (defn defer-msg!
   "Defer a message to a time when"
   [^Map storage-inst ^Map msg ^DateTime when]
-  {:pre [(t/after? when (t/now))]}
-  (s/store-deferred-msg! {:msg msg :when when :inst storage-inst}))
+  (s/store-msg! {:msg msg :when when :inst storage-inst}))
+
+(defn remove-msg!
+  "Remove a deferred message with an id"
+  [^Map storage-inst ^String id]
+  (s/remove-msg! {:inst storage-inst :id id}))
