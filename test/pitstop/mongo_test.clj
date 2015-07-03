@@ -4,7 +4,8 @@
             [clj-time.core :as t]
             [monger.collection :as mc]
             [qb.util :as qbu]
-            [clojure.core.async :refer (<!! close!) :as async])
+            [clojure.core.async :refer (<!! close!) :as async]
+            pitstop.storage.mongo)
   (:import [pitstop.storage.mongo MongoStorage]))
 
 (defonce mongo-cfg {:type :mongo
