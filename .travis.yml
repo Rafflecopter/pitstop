@@ -2,3 +2,4 @@ language: clojure
 script: lein midje
 services:
   - mongodb
+jdk: oraclejdk7

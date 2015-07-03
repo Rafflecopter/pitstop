@@ -11,7 +11,11 @@
                  [org.clojure/core.async "0.1.346.0-17112a-alpha"]
                  [com.rafflecopter/qb "0.1.0"]
                  [clj-time "0.9.0"]
-                 [com.novemberain/monger "2.1.0"]]
+                 [com.novemberain/monger "2.1.0"]
+
+                 ;; Monger time-encoding dependencies. go figure
+                 [org.clojure/data.json "0.2.6"]
+                 [cheshire "5.1.1"]]
 
   :profiles {:dev {:dependencies [[midje "1.6.3"]]
                    :plugins [[lein-midje "3.1.3"]]}})
