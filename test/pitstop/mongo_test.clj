@@ -72,3 +72,6 @@
         (<!! data) => nil)
       (fact "message is gone after close of data chan"
         (find-one {:_id "abc123"}) => nil))))
+
+;; TODO recurring
+;; TODO attaching errors
