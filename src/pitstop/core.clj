@@ -1,51 +1,26 @@
 (ns pitstop.core
-  (:require [pitstop.storage (core :as s) mongo]
-            [pitstop.messaging (core :as m)]
-            [pitstop.pipeline :as pipeline]
-            [clojure.core.async :refer (go-loop alt! chan close! <! pipe)]
-            [clj-time.core :as t])
-  (:import [clojure.lang IFn]
-           [java.util Map]
-           [org.joda.time DateTime]))
+  (:require [clojure.core.async :refer (go >! close! chan)]))
 
+(defmulti init!
+  "Initialize using a config object.
+  Return an instance of Storage"
+  :type)
 
-(defn init-storage!
-  "Initialize a storage config into a storage instance.
-  Storage configs should include all necessary connection
-  information (see each implementation)."
-  ^Map [^Map storage-cfg]
-  (assoc (s/init! storage-cfg)
-         :type (:type storage-cfg)))
-
-(defn init-messaging!
-  "Initialize a messaging config into a messaging instance"
-  ^Map [^Map messaging-cfg]
-  (assoc (m/init! messaging-cfg)
-         :type (:type messaging-cfg)))
-
-
-(defn start-pipeline!
-  "Starts a listener to monitor storages
-   for ready to send messages. Then send those
-   to messaging instances.
-   Each message may have a {:type type} determining its
-   messaging instance to send with. If a message does not
-   have a type, the default type will be set, defaulting to the first
-   messaging instance in the list.
-   Returns a function of no arguments to stop the pipeline.
-   Options: default-type and parallelism"
-  ^IFn [storage-insts messaging-insts
-        & {:keys [default-type parallelism] :as opts}]
-  {:pre [(not (empty? storage-insts))
-         (not (empty? messaging-insts))]}
-  (apply pipeline/start-pipeline! storage-insts messaging-insts opts))
-
-(defn defer-msg!
-  "Defer a message to a time when"
-  [^Map storage-inst ^Map msg ^DateTime when]
-  (s/store-msg! {:msg msg :when when :inst storage-inst}))
-
-(defn remove-msg!
-  "Remove a deferred message with an id"
-  [^Map storage-inst ^String id]
-  (s/remove-msg! {:inst storage-inst :id id}))
+(defprotocol Storage
+  (listen [instance]
+    "Start a listener.
+    Return a map of {:data chan :stop chan}
+    Data channel is channel of items: {:result result-chan :msg msg} to be sent
+    Upon stop channel closing, listening should cease and channel closed.")
+  (store! [instance msg when]
+          [instance msg start end every]
+    "Store a new _or_ updated deferred or deferred-recurring message
+    Deferred messages with just the when argument will be deferred
+     emitted on the listen channel at time when.
+    Recurring messages will be emitted on a listen channel every interval
+     starting at start and ending at end.
+    Messages may contain {:id id} which should be respected for updates.
+    Returns a result channel.")
+  (remove! [instance id]
+    "Remove a deferred or recurring message, denoted by a message's id
+    Return a result channel."))

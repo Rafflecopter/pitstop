@@ -1,17 +1,20 @@
 (ns pitstop.storage.mongo
-  (:require [pitstop.storage.core :as s]
+  (:require [pitstop.core :as p]
             [clojure.string :as string]
             [clojure.core.async :refer (go go-loop chan alt! <! close!) :as async]
             [monger (core :as mg)
                     (collection :as mc)
                     joda-time]
-            [clj-time.core :as t])
+            [clj-time.core :as t]
+            [qb.util :as qbu])
   (:import [org.joda.time DateTimeZone]
            [java.util UUID]))
 
 ;; set default time zone that a org.joda.time.DateTime instances
 ;; will use
 (DateTimeZone/setDefault DateTimeZone/UTC)
+
+;; Connection stuff
 
 (defn- ensure-indices! [{:keys [db coll]}]
   (mc/ensure-index db coll (array-map :ready -1 :locked -1)))
@@ -28,21 +31,62 @@
     (doto {:db dbref :coll coll}
       (ensure-indices!))))
 
+;; Util
+
 (defn- make-id [] (str (UUID/randomUUID)))
 
-(defn- unlocked-val [lock-time] (t/minus (t/now) lock-time))
+(defn- resulting-operation [op]
+  (let [rc (qbu/result-chan)]
+    (go (try (if-let [res (op)]
+                     (qbu/error rc res)
+                     (qbu/success rc))
+          (catch Exception e (qbu/error rc {:error (.getMessage e)}))))
+    rc))
 
-(defn- update-ready-time [{:keys [db coll lock-time]} {id :id :as msg} when]
-  (let [id (or id (make-id))]
-    (mc/update db coll
-               {:_id id}
-               {:_id id :ready when :msg msg :locked (unlocked-val lock-time)}
-               {:upsert true :multi false})))
+(defn- interval->rand-ms
+  "Converts a joda time interval into a random
+  number of milliseconds averaging to that interval"
+  [interval]
+  (let [ms (t/in-millis interval)]
+    (+ (/ ms 2) (rand-int ms))))
+
+(def ^:private unlocked-val (t/minus (t/now) (t/hours 1)))
+(def ^:private neverending-val nil)
+
+;; Wrap messages
+
+(defn- wrap-deferred-msg [{id :id :as msg} when]
+  {:_id (or id (make-id))
+   :ready when
+   :msg msg
+   :locked unlocked-val})
+
+(defn- wrap-recurring-msg [{id :id :as msg} every starting ending]
+  {:_id (or id (make-id))
+   :ready starting
+   :recur every
+   :msg msg
+   :locked unlocked-val
+   :expire ending})
+
+;; DB Operations
+
+(defn- update-msg! [{:keys [db coll]} {:keys [_id] :as full-msg}]
+  (resulting-operation
+    #(if (= 0 (-> (mc/update-by-id db coll _id full-msg {:upsert true}) .getN))
+         {:error "update failed to upsert"})))
 
 (defn- remove-msg! [{:keys [db coll]} id]
-  (mc/remove-by-id db coll id))
+  (resulting-operation
+    #(do (mc/remove-by-id db coll id) nil)))
 
-(defn- get-ready-msgs [{:keys [db coll lock-time]}]
+(defn- re-recur-msg! [{:keys [db coll]} id intv]
+  (resulting-operation
+    #(do (mc/update db coll {:_id id} {"$set" {:ready (t/plus (t/now) intv)
+                                               :locked unlocked-val}})
+         nil)))
+
+(defn- get-and-lock-ready-msgs! [{:keys [db coll lock-time]}]
   (let [locked-by (make-id)
         result (mc/update db coll
                           {:locked {"$lte" (t/now)}
@@ -54,47 +98,57 @@
         []
         (mc/find-maps db coll {:locked-by locked-by}))))
 
-(defn- interval->rand-ms
-  "Converts a joda time interval into a random
-  number of milliseconds averaging to that interval"
-  [interval]
-  (let [ms (t/in-millis interval)]
-    (+ (/ ms 2) (rand-int ms))))
+;; Higher level stuff
 
-(defn- attach-success-chan [inst {id :_id :as msg}]
-  (let [c (chan)]
-    (go (<! c)
-        (remove-msg! inst id))
-    (assoc msg :success c)))
+(defn- unexpired-msg-check [inst {:keys [_id expire]}]
+  (if (and expire (t/after? (t/now) expire))
+      (do (go (remove-msg! inst _id))
+          false)
+      true))
+
+(defn- on-result-success [inst {:keys [_id recur]}]
+  (if recur (re-recur-msg! inst _id recur)
+            (remove-msg! inst _id)))
+
+(defn- on-result-error [inst {:keys [_id] :as msg} error]
+  (update-msg! inst (assoc msg :last-error error)))
 
 (defn- message-xform [inst]
-  (comp (map (partial attach-success-chan inst))
-        (map #(select-keys % [:msg :success]))))
+  (comp (filter (partial unexpired-msg-check inst))
+        (qbu/wrap-result-chan-xf (partial on-result-success inst)
+                                 (partial on-result-error inst))
+        (map #(assoc (:msg %) :result (:result %)))
+        (map #(select-keys % [:msg :result]))))
 
 (defn- listener-loop [{:keys [loop-time] :as inst} stopper]
   (let [c (chan)
         mktimeout #(async/timeout (interval->rand-ms loop-time))]
     (go-loop [tmout (mktimeout)]
-      (<! (async/onto-chan c (get-ready-msgs inst) false))
+      (<! (async/onto-chan c (get-and-lock-ready-msgs! inst) false))
       (alt! stopper ([_] (close! c))
             tmout ([_] (recur (mktimeout)))))
     c))
 
-(defmethod s/init! :mongo
+(defn- listen [inst]
+  (let [stopper (chan)]
+      {:stop stopper
+       :data (async/pipe (listener-loop inst stopper)
+                         (chan 1 (message-xform inst)))}))
+
+;; Storage implementation
+
+(defrecord MongoStorage [db coll loop-time lock-time]
+  p/Storage
+  (listen [inst] (listen inst))
+  (store! [inst msg when]
+    (update-msg! inst (wrap-deferred-msg msg when)))
+  (store! [inst msg start end every]
+    (update-msg! inst (wrap-recurring-msg msg every start end)))
+  (remove! [inst id] (remove-msg! inst id)))
+
+(defmethod p/init! :mongo
   [{:keys [lock-time loop-time] :as cfg}]
-  (assoc (connect cfg)
-         :lock-time (or lock-time (t/minutes 15))
-         :loop-time (or loop-time (t/minutes 1))))
-
-(defmethod s/listen-for-msgs! :mongo
-  [{inst :inst stopper :stopper}]
-  (async/pipe (listener-loop inst stopper)
-              (chan 1 (message-xform inst))))
-
-(defmethod s/store-msg! :mongo
-  [{inst :inst msg :msg when :when}]
-  (update-ready-time inst msg when))
-
-(defmethod s/remove-msg! :mongo
-  [{inst :inst id :id}]
-  (remove-msg! inst id))
+  (let [{:keys [db coll]} (connect cfg)]
+    (MongoStorage. db coll
+                   (or loop-time (t/minutes 1))
+                   (or lock-time (t/minutes 15)))))
