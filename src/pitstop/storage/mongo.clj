@@ -53,6 +53,9 @@
 (def ^:private unlocked-val (t/minus (t/now) (t/hours 1)))
 (def ^:private neverending-val nil)
 
+(def interval->ms t/in-millis)
+(def ms->interval t/millis)
+
 ;; Wrap messages
 
 (defn- wrap-deferred-msg [{id :id :as msg} when]
@@ -64,7 +67,7 @@
 (defn- wrap-recurring-msg [{id :id :as msg} every starting ending]
   {:_id (or id (make-id))
    :ready starting
-   :recur every
+   :recur (interval->ms every)
    :msg msg
    :locked unlocked-val
    :expire ending})
@@ -107,7 +110,7 @@
       true))
 
 (defn- on-result-success [inst {:keys [_id recur]}]
-  (if recur (re-recur-msg! inst _id recur)
+  (if recur (re-recur-msg! inst _id (ms->interval recur))
             (remove-msg! inst _id)))
 
 (defn- on-result-error [inst {:keys [_id] :as msg} error]
