@@ -1,4 +1,4 @@
-# pitstop
+# pitstop [![Build Status][1]][2]
 
 Message-deferring application with a pluggable backend.
 
@@ -74,7 +74,7 @@ Configuration
 
 ## License
 
-See [LICENSE](https://github.com/Rafflecopter/clj-relyq/blob/master/LICENSE) file
+See [LICENSE](https://github.com/Rafflecopter/pitstop/blob/master/LICENSE) file
 
-[1]: https://travis-ci.org/Rafflecopter/clj-relyq.png?branch=master
-[2]: http://travis-ci.org/Rafflecopter/clj-relyq
+[1]: https://travis-ci.org/Rafflecopter/pitstop.png?branch=master
+[2]: http://travis-ci.org/Rafflecopter/pitstop
