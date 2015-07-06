@@ -20,6 +20,8 @@
   (mc/ensure-index db coll (array-map :ready -1 :locked -1)))
 
 (defn- connect [{:keys [host port hosts options dbname user pass coll]}]
+  (when-not (or hosts host)
+    (throw (Exception. "No hosts in mongo config")))
   (let [addrs (->> (or hosts [(str host ":" port)])
                    (map #(string/split % #":"))
                    (map #(mg/server-address (nth % 0) (-> % (nth 1) Integer/parseInt))))
