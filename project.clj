@@ -1,4 +1,4 @@
-(defproject com.rafflecopter/pitstop "0.1.0"
+(defproject com.rafflecopter/pitstop "0.1.1"
   :description "Meessage-deferring application"
   :url "http://github.com/Rafflecopter/pitstop"
   :license {:name "MIT"
@@ -9,7 +9,7 @@
 
   :dependencies [[org.clojure/clojure "1.7.0"]
                  [org.clojure/core.async "0.1.346.0-17112a-alpha"]
-                 [com.rafflecopter/qb "0.1.0"]
+                 [com.rafflecopter/qb "0.1.1"]
                  [clj-time "0.9.0"]
                  [com.novemberain/monger "2.1.0"]
 
