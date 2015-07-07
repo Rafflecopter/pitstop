@@ -10,7 +10,7 @@ Pitstop is designed to take messages, store them, and re-emit them later as desi
 (ns your-namespace-here
   (:require [pitstop.core :as p]
             [clj-time.core :as t]
-            [qb.util :as qbutil]
+            [qb.util :refer (ack-success nack-error)]
             [clojure.core.async :refer (go-loop <! close!)]))
 
 (def config {:type :mongo ...}) ; See below for config options
@@ -19,13 +19,13 @@ Pitstop is designed to take messages, store them, and re-emit them later as desi
 ;; Listen for emitted messages
 (let [{:keys [data stop]} (p/listen instance)]
   (go-loop []
-    (let [{:keys [result msg]} (<! data)]
+    (let [{:keys [ack msg]} (<! data)]
       (try (handle-msg msg)
            ;; Notify pitstop of successful processing
-           (qbutil/success result)
+           (ack-success ack)
         (catch Exception e
           ;; Notify pitstop of an error in processing
-          (qbutil/error result (.getMessage e)))))
+          (nack-error ack (.getMessage e)))))
     (recur))
 
   ;; At some point, you can stop the listener by closing the stop channel

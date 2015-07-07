@@ -1,5 +1,4 @@
-(ns pitstop.core
-  (:require [clojure.core.async :refer (go >! close! chan)]))
+(ns pitstop.core)
 
 (defmulti init!
   "Initialize using a config object.
@@ -10,7 +9,7 @@
   (listen [instance]
     "Start a listener.
     Return a map of {:data chan :stop chan}
-    Data channel is channel of items: {:result result-chan :msg msg} to be sent
+    Data channel is channel of items: {:ack ack-chan :msg msg} to be sent
     Upon stop channel closing, listening should cease and channel closed.")
   (store! [instance msg when]
           [instance msg start end every]
@@ -20,7 +19,7 @@
     Recurring messages will be emitted on a listen channel every interval
      starting at start and ending at end.
     Messages may contain {:id id} which should be respected for updates.
-    Returns a result channel.")
+    Returns a ack channel.")
   (remove! [instance id]
     "Remove a deferred or recurring message, denoted by a message's id
-    Return a result channel."))
+    Return a ack channel."))

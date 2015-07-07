@@ -4,7 +4,7 @@
             [clj-time.core :as t]
             [clj-time.coerce :as c]
             [monger.collection :as mc]
-            [qb.util :as qbu]
+            [qb.util :refer (ack-success)]
             [clojure.core.async :refer (<!! close!) :as async]
             pitstop.storage.mongo)
   (:import [pitstop.storage.mongo MongoStorage]))
@@ -13,7 +13,7 @@
                 :host "localhost"
                 :port 27017
                 :dbname "pitstop"
-                :coll "pitstop"
+                :coll "test.pitstop"
                 :lock-time (t/minutes 1)
                 :loop-time (t/seconds 10)})
 
@@ -45,7 +45,7 @@
   (mc/drop (:db @mongo-inst) (:coll @mongo-inst))
   (fact "store! deferred with id stores correctly"
     (let [when (t/plus (t/now) (t/minutes 15))]
-      (fact "store! completes result chan"
+      (fact "store! completes ack chan"
         (<!! (p/store! @mongo-inst {:id "abc123" :message true} when)) => nil)
       (let [msg (find-one {:_id "abc123"})]
         msg => (contains {:_id "abc123" :msg {:id "abc123" :message true} :ready when})
@@ -53,14 +53,14 @@
           (:locked msg) => (before? (t/now))))))
   (fact "store! deferred with same id updates"
     (let [when (t/now)]
-      (fact "store! completes result chan"
+      (fact "store! completes ack chan"
         (<!! (p/store! @mongo-inst {:id "abc123" :message true} when)) => nil)
       (find-one {:_id "abc123"}) => (contains {:_id "abc123"
                                                :msg {:id "abc123" :message true}
                                                :ready when})))
   (fact "store! without id creates id and stores"
     (let [when (t/plus (t/now) (t/minutes 20))]
-      (fact "store! completes result chan"
+      (fact "store! completes ack chan"
         (<!! (p/store! @mongo-inst {:noid true} when)) => nil)
       (let [id (:_id (find-one {"msg.noid" true}))]
         (fact "new id is uuid"
@@ -73,7 +73,7 @@
         end (t/plus (t/now) (t/days 1))
         every (t/minutes 20)]
     (fact "store! a recurring message"
-      (fact "store! completes result chan"
+      (fact "store! completes ack chan"
         (<!! (p/store! @mongo-inst {:id "recur1"} start end every)) => nil)
       (let [msg (find-one {:_id "recur1"})]
         msg => (contains {:_id "recur1" :msg {:id "recur1"}
@@ -81,7 +81,7 @@
 
     (fact "store! update recurring message"
       (let [nstart (t/now)]
-        (fact "store! completes result chan"
+        (fact "store! completes ack chan"
           (<!! (p/store! @mongo-inst {:id "recur1"} nstart end every)) => nil)
         (let [msg (find-one {:_id "recur1"})]
           msg => (contains {:_id "recur1" :ready nstart})))))
@@ -90,16 +90,16 @@
     (let [{:keys [data stop]} (p/listen @mongo-inst)
           tmout (async/timeout 100)]
       (async/alt!!
-        data ([{:keys [msg result]}]
+        data ([{:keys [msg ack]}]
                (fact "deferred message looks right"
                  msg => {:id "abc123" :message true})
-               (qbu/success result))
+               (ack-success ack))
         tmout ([_] (fact "timeout occured" true => false)))
       (async/alt!!
-        data ([{:keys [msg result]}]
+        data ([{:keys [msg ack]}]
                (fact "recurring message looks right"
                  msg => {:id "recur1"})
-               (qbu/success result))
+               (ack-success ack))
         tmout ([_] (fact "timeout occured" true => false)))
       (close! stop)
       (fact "data chan is closed on stop"

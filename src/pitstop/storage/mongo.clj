@@ -6,7 +6,7 @@
                     (collection :as mc)
                     joda-time]
             [clj-time.core :as t]
-            [qb.util :as qbu])
+            [qb.util :refer (wrap-ack-chan-xf ack-blocking-op*)])
   (:import [org.joda.time DateTimeZone]
            [java.util UUID]))
 
@@ -37,14 +37,6 @@
 
 (defn- make-id [] (str (UUID/randomUUID)))
 
-(defn- resulting-operation [op]
-  (let [rc (qbu/result-chan)]
-    (go (try (if-let [res (op)]
-                     (qbu/error rc res)
-                     (qbu/success rc))
-          (catch Exception e (qbu/error rc {:error (.getMessage e)}))))
-    rc))
-
 (defn- interval->rand-ms
   "Converts a joda time interval into a random
   number of milliseconds averaging to that interval"
@@ -54,9 +46,6 @@
 
 (def ^:private unlocked-val (t/minus (t/now) (t/hours 1)))
 (def ^:private neverending-val nil)
-
-(def interval->ms t/in-millis)
-(def ms->interval t/millis)
 
 ;; Wrap messages
 
@@ -69,7 +58,7 @@
 (defn- wrap-recurring-msg [{id :id :as msg} every starting ending]
   {:_id (or id (make-id))
    :ready starting
-   :recur (interval->ms every)
+   :recur (t/in-millis every)
    :msg msg
    :locked unlocked-val
    :expire ending})
@@ -77,29 +66,28 @@
 ;; DB Operations
 
 (defn- update-msg! [{:keys [db coll]} {:keys [_id] :as full-msg}]
-  (resulting-operation
-    #(if (= 0 (-> (mc/update-by-id db coll _id full-msg {:upsert true}) .getN))
-         {:error "update failed to upsert"})))
+  (ack-blocking-op*
+    (if (= 0 (-> (mc/update-by-id db coll _id full-msg {:upsert true}) .getN))
+        (throw (Exception. "update failed to upsert")))))
 
 (defn- remove-msg! [{:keys [db coll]} id]
-  (resulting-operation
-    #(do (mc/remove-by-id db coll id) nil)))
+  (ack-blocking-op*
+    (mc/remove-by-id db coll id)))
 
-(defn- re-recur-msg! [{:keys [db coll]} id intv]
-  (resulting-operation
-    #(do (mc/update db coll {:_id id} {"$set" {:ready (t/plus (t/now) intv)
-                                               :locked unlocked-val}})
-         nil)))
+(defn- update-ready! [{:keys [db coll]} id new-ready]
+  (ack-blocking-op*
+    (mc/update db coll {:_id id} {"$set" {:ready new-ready
+                                          :locked unlocked-val}})))
 
 (defn- get-and-lock-ready-msgs! [{:keys [db coll lock-time]}]
   (let [locked-by (make-id)
-        result (mc/update db coll
-                          {:locked {"$lte" (t/now)}
-                           :ready {"$lte" (t/now)}}
-                          {"$set" {:locked (t/plus (t/now) lock-time)
-                                   :locked-by locked-by}}
-                          {:upsert false :multi true})]
-    (if (= 0 (.getN result))
+        mres (mc/update db coll
+                        {:locked {"$lte" (t/now)}
+                         :ready {"$lte" (t/now)}}
+                        {"$set" {:locked (t/plus (t/now) lock-time)
+                                 :locked-by locked-by}}
+                        {:upsert false :multi true})]
+    (if (= 0 (.getN mres))
         []
         (mc/find-maps db coll {:locked-by locked-by}))))
 
@@ -111,19 +99,21 @@
           false)
       true))
 
-(defn- on-result-success [inst {:keys [_id recur]}]
-  (if recur (re-recur-msg! inst _id (ms->interval recur))
-            (remove-msg! inst _id)))
+(defn- on-ack-success [inst {:keys [_id recur ready expire]}]
+  (let [new-ready (if recur (t/plus ready (t/millis recur)))]
+    (if (and recur (t/after? expire new-ready))
+        (update-ready! inst _id new-ready)
+        (remove-msg! inst _id))))
 
-(defn- on-result-error [inst {:keys [_id] :as msg} error]
+(defn- on-ack-error [inst {:keys [_id] :as msg} error]
   (update-msg! inst (assoc msg :last-error error)))
 
 (defn- message-xform [inst]
   (comp (filter (partial unexpired-msg-check inst))
-        (qbu/wrap-result-chan-xf (partial on-result-success inst)
-                                 (partial on-result-error inst))
-        (map #(assoc (:msg %) :result (:result %)))
-        (map #(select-keys % [:msg :result]))))
+        (wrap-ack-chan-xf (partial on-ack-success inst)
+                          (partial on-ack-error inst))
+        (map #(assoc (:msg %) :ack (:ack %)))
+        (map #(select-keys % [:msg :ack]))))
 
 (defn- listener-loop [{:keys [loop-time] :as inst} stopper]
   (let [c (chan)
