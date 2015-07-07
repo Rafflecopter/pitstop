@@ -7,9 +7,16 @@
         :url "https://github.com/Rafflecopter/pitstop"}
   :deploy-repositories [["clojars" {:creds :gpg}]]
 
+  :release-tasks [["vcs" "assert-committed"]
+                  ["change" "version"
+                   "leiningen.release/bump-version" "release"]
+                  ["vcs" "commit"]
+                  ["vcs" "tag"]
+                  ["deploy" "clojars"]]
+
   :dependencies [[org.clojure/clojure "1.7.0"]
                  [org.clojure/core.async "0.1.346.0-17112a-alpha"]
-                 [com.rafflecopter/qb "0.2.0-SNAPSHOT"]
+                 [com.rafflecopter/qb "0.2.0"]
                  [clj-time "0.9.0"]
                  [com.novemberain/monger "2.1.0"]
 
