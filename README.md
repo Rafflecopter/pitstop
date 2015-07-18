@@ -4,6 +4,8 @@ Message-deferring application with a pluggable backend.
 
 Pitstop is designed to take messages, store them, and re-emit them later as desired. It can handle deferred and/or recurring messages. It's designed to work well with [qb](https://github.com/Rafflecopter/clj-qb).
 
+[![Clojars Project](http://clojars.org/com.rafflecopter/pitstop/latest-version.svg)](http://clojars.org/com.rafflecopter/pitstop)
+
 ## Usage
 
 ```clojure
