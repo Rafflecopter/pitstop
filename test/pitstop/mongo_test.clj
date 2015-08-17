@@ -10,12 +10,12 @@
   (:import [pitstop.storage.mongo MongoStorage]))
 
 (defonce mongo-cfg {:type :mongo
-                :host "localhost"
-                :port 27017
-                :dbname "pitstop"
-                :coll "test.pitstop"
-                :lock-time (t/minutes 1)
-                :loop-time (t/seconds 10)})
+                    :host "localhost"
+                    :port 27017
+                    :dbname "pitstop"
+                    :coll "test.pitstop"
+                    :lock-time (t/minutes 1)
+                    :loop-time (t/seconds 10)})
 
 (defonce mongo-inst (atom nil))
 
@@ -41,6 +41,7 @@
   (fact "init! gives an instance"
     (if-not @mongo-inst
       (reset! mongo-inst (p/init! mongo-cfg)))
+    (println "mongo storage" @mongo-inst)
     (instance? MongoStorage @mongo-inst) => true)
   (mc/drop (:db @mongo-inst) (:coll @mongo-inst))
   (fact "store! deferred with id stores correctly"
