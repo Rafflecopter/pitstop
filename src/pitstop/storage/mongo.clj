@@ -2,8 +2,8 @@
   (:require [pitstop.core :as p]
             [clojure.string :as string]
             [clojure.core.async :refer (go go-loop chan alt! <! close!) :as async]
-            [monger (core :as mg)
-                    (collection :as mc)
+            [monger (collection :as mc)
+                    (connect :as mconn)
                     joda-time]
             [clj-time.core :as t]
             [qb.util :refer (wrap-ack-chan-xf ack-blocking-op*)])
@@ -16,22 +16,8 @@
 
 ;; Connection stuff
 
-(defn- ensure-indices! [{:keys [db coll]}]
+(defn- ensure-indices! [db coll]
   (mc/ensure-index db coll (array-map :ready -1 :locked -1)))
-
-(defn- connect [{:keys [host port hosts options dbname user pass coll]}]
-  (when-not (or hosts host)
-    (throw (Exception. "No hosts in mongo config")))
-  (let [addrs (->> (or hosts [(str host ":" port)])
-                   (map #(string/split % #":"))
-                   (map #(mg/server-address (nth % 0) (-> % (nth 1) Integer/parseInt))))
-        options (mg/mongo-options (merge {:w 1} options))
-        conn (mg/connect addrs options)
-        dbref (mg/get-db conn dbname)]
-    (if (and user pass)
-        (mg/authenticate dbref user (.toCharArray pass)))
-    (doto {:db dbref :coll coll}
-      (ensure-indices!))))
 
 ;; Util
 
@@ -142,8 +128,9 @@
   (remove! [inst id] (remove-msg! inst id)))
 
 (defmethod p/init! :mongo
-  [{:keys [lock-time loop-time] :as cfg}]
-  (let [{:keys [db coll]} (connect cfg)]
-    (MongoStorage. db coll
+  [{:keys [lock-time loop-time coll] :as cfg}]
+  (mconn/wmong cfg
+    (ensure-indices! mconn/db coll)
+    (MongoStorage. mconn/db coll
                    (or loop-time (t/minutes 1))
                    (or lock-time (t/minutes 15)))))
