@@ -1,11 +1,11 @@
-(defproject com.rafflecopter/pitstop "0.2.2"
+(defproject com.rafflecopter/pitstop "0.2.3-SNAPSHOT"
   :description "Meessage-deferring application"
   :url "http://github.com/Rafflecopter/pitstop"
   :license {:name "MIT"
             :url "http://github.com/Rafflecopter/pitstop/blob/master/LICENSE"}
   :scm {:name "git"
         :url "https://github.com/Rafflecopter/pitstop"}
-  :deploy-repositories [["releases" {:url :clojars}]]
+  :deploy-repositories [["releases" :clojars]]
 
   :dependencies [[org.clojure/clojure "1.7.0"]
                  [org.clojure/core.async "0.1.346.0-17112a-alpha"]
