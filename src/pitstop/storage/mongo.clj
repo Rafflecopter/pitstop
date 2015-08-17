@@ -27,7 +27,7 @@
   "Converts a joda time interval into a random
   number of milliseconds averaging to that interval"
   [interval]
-  (let [ms (t/in-millis interval)]
+  (let [ms (.toDurationMillis interval)]
     (+ (/ ms 2) (rand-int ms))))
 
 (def ^:private unlocked-val (t/minus (t/now) (t/hours 1)))
@@ -44,7 +44,7 @@
 (defn- wrap-recurring-msg [{id :id :as msg} every starting ending]
   {:_id (or id (make-id))
    :ready starting
-   :recur (t/in-millis every)
+   :recur (.toDurationMillis every)
    :msg msg
    :locked unlocked-val
    :expire ending})
