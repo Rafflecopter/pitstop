@@ -1,4 +1,4 @@
-(defproject com.rafflecopter/pitstop "0.2.1"
+(defproject com.rafflecopter/pitstop "0.2.2-SNAPSHOT"
   :description "Meessage-deferring application"
   :url "http://github.com/Rafflecopter/pitstop"
   :license {:name "MIT"
