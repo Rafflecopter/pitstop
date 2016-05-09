@@ -1,5 +1,5 @@
 (ns pitstop.storage.mongo
-  (:require [pitstop.core :as p]
+  (:require [pitstop.protocols :as proto]
             [clojure.string :as string]
             [clojure.core.async :refer (go go-loop chan alt! <! close!) :as async]
             [monger (collection :as mc)
@@ -119,7 +119,7 @@
 ;; Storage implementation
 
 (defrecord MongoStorage [db coll loop-time lock-time]
-  p/Storage
+  proto/Storage
   (listen [inst] (listen inst))
   (store! [inst msg when]
     (update-msg! inst (wrap-deferred-msg msg when)))
@@ -127,8 +127,7 @@
     (update-msg! inst (wrap-recurring-msg msg every start end)))
   (remove! [inst id] (remove-msg! inst id)))
 
-(defmethod p/init! :mongo
-  [{:keys [lock-time loop-time coll] :as cfg}]
+(defn init! [{:keys [lock-time loop-time coll] :as cfg}]
   (mconn/wmong cfg
     (ensure-indices! mconn/db coll)
     (MongoStorage. mconn/db coll
